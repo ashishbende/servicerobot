@@ -2,54 +2,68 @@
 #include <visualization_msgs/Marker.h>
 #include "nav_msgs/Odometry.h"
 #include <complex>
+#include <math.h>
 
+//location and thresholds
+float pick_up_location[3] = {3.0, 5.0, 1.0};
+float drop_off_location[3] = {-1.0, 0.0, 1.0};
+float threshold[2] = {0.3, 0.01};
 
-//Positions and thresholds
-float pickUp[3] = {3.0, 5.0, 1.0};
-float dropOff[3] = {-1.0, 0.0, 1.0};
-float thresh[2] = {0.3, 0.01};
+//robot state flags
+bool on_pickup_location = false;
+bool picked_up = false;
+bool on_dropoff_location = false;
+bool delivered = false;
 
+// simple state machine to update robot states, 
+// based on pose and pick/drop locations
+void update_robot_state(const nav_msgs::Odometry::ConstPtr &msg)
+{
+  float robot_pos_x = msg->pose.pose.position.x;
+  float robot_pos_y = msg->pose.pose.position.y;
+  float robot_orientation = msg->pose.pose.orientation.w;
 
-//Flags
-bool atPickUp = false;
-bool atDropOff = false;
-bool pickUpDone = false;
-bool dropOffDone = false;
-
-
-void chatterCallback(const nav_msgs::Odometry::ConstPtr& msg)
-{ 
+  //ROS_INFO("robot (x=%f, y=%f, w=%f",robot_pos_x, robot_pos_y, robot_orientation);
+  // euclidean_dist = pow( pow((pick_up_location[0] - robot_pos_x),2) + pow((pick_up_location[1] - robot_pos_y),2), 0.5);
+  // pick-up actions
+  if (   std::abs(pick_up_location[0] - robot_pos_x) < threshold[0] 
+      && std::abs(pick_up_location[1] - robot_pos_y) < threshold[0] 
+      && std::abs(pick_up_location[2] - robot_orientation) < threshold[1])
+  {
+    if (!on_pickup_location)
+    {
+      on_pickup_location = true;
+    }
+  }
+  else
+  {
+    on_pickup_location = false;
+  }
   
-//Pick up
-if (std::abs(pickUp[0] -msg->pose.pose.position.x) < thresh[0] && std::abs(pickUp[1] -msg->pose.pose.position.y) < thresh[0] && std::abs(pickUp[2] -msg->pose.pose.orientation.w) < thresh[1])
-   { 
-    if(!atPickUp)
+  // drop-off actions
+  if (   std::abs(drop_off_location[0] - robot_pos_x) < threshold[0] 
+      && std::abs(drop_off_location[1] - robot_pos_y) < threshold[0] 
+      && std::abs(drop_off_location[2] - robot_orientation) < threshold[1])
+  {
+    if (!on_dropoff_location)
     {
-     atPickUp = true;
+      on_dropoff_location = true;
     }
-   }else{atPickUp = false;}
-
-//Drop off
-if (std::abs(dropOff[0] -msg->pose.pose.position.x) < thresh[0] && std::abs(dropOff[1] -msg->pose.pose.position.y) < thresh[0] && std::abs(dropOff[2] -msg->pose.pose.orientation.w) < thresh[1])
-  { 
-    if(!atDropOff)
-    {
-     atDropOff = true;
-    }
-   }else{atDropOff = false;}
-
+  }
+  else
+  {
+    on_dropoff_location = false;
+  }
 }
 
-int main( int argc, char** argv )
+int main(int argc, char **argv)
 {
-  ROS_INFO("Main");
+
   ros::init(argc, argv, "add_markers");
   ros::NodeHandle n;
   ros::Rate r(1);
   ros::Publisher marker_pub = n.advertise<visualization_msgs::Marker>("visualization_marker", 1);
-  ros::Subscriber odom_sub = n.subscribe("odom", 1000, chatterCallback);
-  
-
+  ros::Subscriber odom_sub = n.subscribe("/odom", 1000, update_robot_state);
 
   // Set our initial shape type to be a cube
   uint32_t shape = visualization_msgs::Marker::CUBE;
@@ -73,14 +87,14 @@ int main( int argc, char** argv )
     marker.action = visualization_msgs::Marker::ADD;
 
     // Set the pose of the marker.  This is a full 6DOF pose relative to the frame/time specified in the header
-    marker.pose.position.x = pickUp[0];
-    marker.pose.position.y = pickUp[1];
+    marker.pose.position.x = pick_up_location[0];
+    marker.pose.position.y = pick_up_location[1];
     marker.pose.position.z = 0;
-    
+
     marker.pose.orientation.x = 0.0;
     marker.pose.orientation.y = 0.0;
     marker.pose.orientation.z = 0.0;
-    marker.pose.orientation.w = pickUp[2];
+    marker.pose.orientation.w = pick_up_location[2];
 
     // Set the scale of the marker -- 1x1x1 here means 1m on a side
     marker.scale.x = 0.5;
@@ -105,42 +119,43 @@ int main( int argc, char** argv )
       ROS_WARN_ONCE("Please create a subscriber to the marker");
       sleep(1);
     }
-    
-   marker_pub.publish(marker);
-   ROS_INFO("Pick-up marker displayed");
-   
-   //Wait for Pick-Up
-   while(!atPickUp)
-   {
-    ros::spinOnce();
-   }
-   
-   if(atPickUp && !pickUpDone)
-   {
-    marker.action = visualization_msgs::Marker::DELETE;
-    marker_pub.publish(marker);
-    ROS_INFO("Pick-up marker removed");
-    pickUpDone = true;
-   }  
-   
-   //Wait for Drop-Off
-   while(!atDropOff)
-   {
-    ros::spinOnce();
-   }
 
-   if(atDropOff && !dropOffDone)
-   {
-    marker.pose.position.x = dropOff[0];
-    marker.pose.position.y = dropOff[1];
-    marker.pose.orientation.w = dropOff[2];;
-    marker.action = visualization_msgs::Marker::ADD;
+    ROS_INFO("Now showing the cube..");
     marker_pub.publish(marker);
-    ROS_INFO("Drop-off marker displayed");
-    dropOffDone = true;
-    ros::Duration(10.0).sleep();
-   }  
+
+    //going towards pickup location
+    while (!on_pickup_location)
+    {
+      ros::spinOnce();
+    }
+
+    if (on_pickup_location && !picked_up)
+    {
+      // remove marker
+      marker.action = visualization_msgs::Marker::DELETE;
+      marker_pub.publish(marker);
+      ROS_INFO("Got the package!");
+      picked_up = true;
+    }
+
+    //going towards drop-off location
+    while (!on_dropoff_location)
+    {
+      ros::spinOnce();
+    }
+
+    if (on_dropoff_location && !delivered)
+    {
+      marker.pose.position.x = drop_off_location[0];
+      marker.pose.position.y = drop_off_location[1];
+      marker.pose.orientation.w = drop_off_location[2];
+      // display marker again
+      marker.action = visualization_msgs::Marker::ADD;
+      marker_pub.publish(marker);
+      ROS_INFO("Package delivered!");
+      delivered = true;
+      ros::Duration(10.0).sleep();
+    }
     return 0;
   }
- 
 }

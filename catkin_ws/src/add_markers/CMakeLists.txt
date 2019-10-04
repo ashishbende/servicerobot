@@ -10,6 +10,8 @@ project(add_markers)
 find_package(catkin REQUIRED COMPONENTS
   roscpp
   visualization_msgs
+  nav_msgs
+  rospy
 )
 
 ## System dependencies are found with CMake's conventions
@@ -133,6 +135,7 @@ include_directories(
 ## With catkin_make all packages are built within a single CMake context
 ## The recommended prefix ensures that target names across packages don't collide
 # add_executable(${PROJECT_NAME}_node src/add_markers_node.cpp)
+add_executable(add_markers src/add_markers.cpp)
 
 ## Rename C++ executable without prefix
 ## The above recommended prefix causes long target names, the following renames the
@@ -148,6 +151,7 @@ include_directories(
 # target_link_libraries(${PROJECT_NAME}_node
 #   ${catkin_LIBRARIES}
 # )
+target_link_libraries(add_markers ${catkin_LIBRARIES})
 
 #############
 ## Install ##
