@@ -1,5 +1,5 @@
 #!/bin/sh
-xterm -e " roslaunch turtlebot_gazebo turtlebot_world.launch world_file:=/home/mugen/Lab/service_robot/catkin_ws/src/world/uworld.world " &
+xterm -e " roslaunch turtlebot_gazebo turtlebot_world.launch world_file:=$(pwd)/../world/uworld.world " &
 sleep 5
 xterm -e " roslaunch turtlebot_gazebo gmapping_demo.launch " &
 sleep 5
